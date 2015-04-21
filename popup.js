@@ -29,6 +29,8 @@ function getPurchaseItems(xml) {
   var reAmount = /([\d,]+)G/;
   var reDate = /(\d\d\d\d\/\d\d\/\d\d)/;
   var reSellerWebpcno = /character\/(\d+)/;
+
+  var items = [];
   // 0要素目はヘッダなので1から
   for(var i = 1; i < lines.length; i++){
     var line = lines[i];
@@ -40,16 +42,38 @@ function getPurchaseItems(xml) {
     // 金額はカンマ区切りになっている可能性があるのでそれを考慮して数値化
     var amount = parseInt(reAmount.exec(line.getElementsByTagName("td")[2].textContent)[1].split(",").join(""));
     var date = reDate.exec(line.getElementsByTagName("td")[3].getElementsByTagName("p")[0].textContent)[1];
-    var sellerName = line.getElementsByTagName("td")[3].getElementsByTagName("p")[1].getElementsByTagName("a")[0].textContent;
-    var tmpSellerNo = line.getElementsByTagName("td")[3].getElementsByTagName("p")[1].getElementsByTagName("a")[0].getAttribute("href");
-    var sellerWebpcno = reSellerWebpcno.exec(tmpSellerNo)[1];
 
-    console.log("name: " + name + ", num: " + num + ", amount: " + amount + ", date: " + date + ", seller: " + sellerName + ", seller no: " + sellerWebpcno);
+    var sellerName;
+    var sellerWebpcno;
+
+    var sellerElm = line.getElementsByTagName("td")[3].getElementsByTagName("p")[1].getElementsByTagName("a")[0];
+    if(sellerElm != null){
+      sellerName = sellerElm.textContent;
+      var tmpSellerNo = sellerElm.getAttribute("href");
+      sellerWebpcno = reSellerWebpcno.exec(tmpSellerNo)[1];
+    } else {
+      sellerName = "削除キャラ";
+      sellerWebpcno = null;
+    }
+
+    var item = {name: name, num: num, amount: amount, date: date, sellerName: sellerName, sellerWebpcno: sellerWebpcno};
+//    console.log(item);
+
+    items.push(item);
   }
+
+  console.log("items length: " + items.length);
+  return items;
 }
 
-function getBazzarHistory(webpcno) {
-  var buyUrl =  "http://hiroba.dqx.jp/sc/character/" + webpcno + "/bazaar/purchasehistory/";
+function getBazzarHistory(webpcno, page, allItems, callback) {
+  if(page > 9){
+    callback(allItems);
+    return;
+  }
+
+  var buyUrl =  "http://hiroba.dqx.jp/sc/character/" + webpcno + "/bazaar/purchasehistory/page/" + page;
+  console.log("url: " + buyUrl);
 //  var entryUrl = "http://hiroba.dqx.jp/sc/character/" + webpcno + "/bazaar/entryhistory/";
   
   var xhr = new XMLHttpRequest();
@@ -60,7 +84,11 @@ function getBazzarHistory(webpcno) {
       var xml = xhr.responseXML;
 //      console.log(xml);
 
-      var items = getPurchaseItems(xml)
+      var items = getPurchaseItems(xml);
+      Array.prototype.push.apply(allItems, items);
+      console.log("items: " + items.length + ", all items length: " + allItems.length);
+
+      getBazzarHistory(webpcno, page+1, allItems, callback);
     }
   };
 
@@ -68,6 +96,12 @@ function getBazzarHistory(webpcno) {
   xhr.open("GET", buyUrl, true);
   xhr.responseType="document";
   xhr.send();
+}
+
+function sendHistory(allItems) {
+  console.log("send history " + allItems.length);
+  var json = JSON.stringify(allItems);
+  console.log(json);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -98,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       sendButton.addEventListener("click", function(){
         console.log("button clicked");
-        getBazzarHistory(webpcno);
+        getBazzarHistory(webpcno, 0, [], sendHistory);
       }, false);
       sendButton.disabled = false;
 
